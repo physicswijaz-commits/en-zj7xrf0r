@@ -1,0 +1,47 @@
+name: Deploy site
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip site
+        run: mkdir _site && unzip -q site.zip -d _site
+      - name: Add optional snippets to every page
+        run: |
+          python3 - <<'PY'
+          import glob, os
+          head = open('inject-head.html', encoding='utf-8').read() if os.path.exists('inject-head.html') else ''
+          body = open('inject-body.html', encoding='utf-8').read() if os.path.exists('inject-body.html') else ''
+          n = 0
+          for p in glob.glob('_site/**/*.html', recursive=True):
+              s = open(p, encoding='utf-8').read()
+              o = s
+              if head.strip() and '</head>' in s:
+                  s = s.replace('</head>', head + '\n</head>', 1)
+              if body.strip() and '</body>' in s:
+                  s = s.replace('</body>', body + '\n</body>', 1)
+              if s != o:
+                  open(p, 'w', encoding='utf-8').write(s)
+                  n += 1
+          print('pages changed:', n)
+          PY
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
